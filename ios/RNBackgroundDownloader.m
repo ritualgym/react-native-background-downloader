@@ -73,9 +73,15 @@ RCT_EXPORT_MODULE();
 }
 
 - (void)lazyInitSession {
-    if (urlSession == nil) {
-        urlSession = [NSURLSession sessionWithConfiguration:sessionConfig delegate:self delegateQueue:nil];
+    @synchronized (sharedLock) {
+        if (urlSession == nil) {
+            urlSession = [NSURLSession sessionWithConfiguration:sessionConfig delegate:self delegateQueue:nil];
+        }
     }
+}
+
+- (void) dealloc {
+    [urlSession invalidateAndCancel];
 }
 
 - (void)removeTaskFromMap: (NSURLSessionTask *)task {
@@ -89,10 +95,6 @@ RCT_EXPORT_MODULE();
         if (taskConfig) {
             [idToTaskMap removeObjectForKey:taskConfig.id];
             [idToPercentMap removeObjectForKey:taskConfig.id];
-        }
-        if (taskToConfigMap.count == 0) {
-            [urlSession invalidateAndCancel];
-            urlSession = nil;
         }
     }
 }
@@ -127,6 +129,10 @@ RCT_EXPORT_METHOD(download: (NSDictionary *) options) {
     
     @synchronized (sharedLock) {
         NSURLSessionDownloadTask __strong *task = [urlSession downloadTaskWithRequest:request];
+        if (task == nil) {
+            NSLog(@"[RNBackgroundDownloader] - [Error] failed to create download task");
+            return;
+        }
         RNBGDTaskConfig *taskConfig = [[RNBGDTaskConfig alloc] initWithDictionary: @{@"id": identifier, @"destination": destination}];
 
         taskToConfigMap[@(task.taskIdentifier)] = taskConfig;
